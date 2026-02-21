@@ -1,11 +1,15 @@
+import os
 import logging
 from pathlib import Path
 from send2trash import send2trash
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-PATH_TO_DOWNLOADS = r"C:/Users/delga/Downloads"
+load_dotenv()
+PATH_TO_DOWNLOADS = os.getenv("ROOT")# or r"C:/Users/delga/Downloads"
 
-def setup_logging(log_file: str = None):
+
+def setup_logging(log_file: str | None = None) -> None:
     """
     Configure logging settings.
     log_file : str, optional -> Path to the log file. If not provided, logs are not written to file.
@@ -18,13 +22,7 @@ def setup_logging(log_file: str = None):
         )
 
 
-def validate_folder(folder: str):
-    """
-    Check if the given folder path exists.
-    folder : str -> Path to the folder to validate.
-    Returns a Path -> A Path object for the validated folder.
-    Raises a FileNotFoundError -> If the folder does not exist.
-    """
+def validate_folder(folder: str) -> Path:
     folder_path = Path(folder)
     if not folder_path.exists():
         raise FileNotFoundError(f"Folder {folder} does not exist")
@@ -33,23 +31,22 @@ def validate_folder(folder: str):
 
 def process_file(file: Path, cutoff: datetime, dry_run: bool = True):
     """
-    Delete or simulate deleting a file if it hasn't been accessed since cutoff date.
-    file : Path -> File to process.
+    Delete or simulate deleting a file if it hasn't been modified since cutoff date.
     cutoff : datetime -> Date threshold for deletion.
-    dry_run : bool, optional -> If True, only simulate deletion (default is True).
-    Returns a bool True if file was deleted (or would be deleted), False otherwise.
+    dry_run : bool -> If True, only simulate deletion (default is True).
     """
     try:
         if file.is_file():
             last_access = datetime.fromtimestamp(file.stat().st_mtime)
-            # Check if file is older than the cutoff
+
             if last_access < cutoff:
                 if dry_run:
-                    print(f"[DRY RUN] Would delete: {file} | last accessed: {last_access}")
+                    print(f"[DRY RUN] Would delete file: {file} | last modified: {last_access}")
+                    return False
                 else:
-                    send2trash(file)  # Safer than os.remove(), can be recovered from trash
+                    send2trash(file)
                     print(f"Deleting file: {file}")
-                    logging.info(f"Deleted: {file}")
+                    logging.info(f"Deleted file: {file}")
                     return True
 
     except Exception as e:
@@ -58,14 +55,32 @@ def process_file(file: Path, cutoff: datetime, dry_run: bool = True):
     return False
 
 
+def process_directory(directory: Path, cutoff: datetime, dry_run: bool = True):
+    """
+    Delete or simulate deleting a directory if it hasn't been modified since cutoff date.
+    WARNING: This will send the ENTIRE directory (and its contents) to trash.
+    """
+    try:
+        if directory.is_dir():
+            last_access = datetime.fromtimestamp(directory.stat().st_mtime)
+
+            if last_access < cutoff:
+                if dry_run:
+                    print(f"[DRY RUN] Would delete directory: {directory} | last modified: {last_access}")
+                    return False
+                else:
+                    send2trash(directory)
+                    print(f"Deleting directory: {directory}")
+                    logging.info(f"Deleted directory: {directory}")
+                    return True
+
+    except Exception as e:
+        print(f"Error processing {directory}: {e}")
+        logging.error(f"Error processing {directory}: {e}")
+    return False
+
+
 def cleanup_downloaded_files(folder: str, months: int, dry_run: bool = True, log_file: str = None):
-    """
-    Clean up old files in a specified folder.
-    folder : str -> Folder to scan and clean.
-    months : int -> Delete files not accessed for this many months.
-    dry_run : bool, optional -> If True, simulate deletions without removing files (default is True).
-    log_file : str, optional -> Path to a log file. If provided, logs are saved there.
-    """
     setup_logging(log_file)
 
     try:
@@ -75,15 +90,21 @@ def cleanup_downloaded_files(folder: str, months: int, dry_run: bool = True, log
         return
 
     cutoff = datetime.now() - timedelta(days=30 * months)
-    deleted_count = 0
+    deleted_files = 0
+    deleted_dirs = 0
 
-    # Iterate through all files in the folder
-    for file in folder_path.iterdir():
-        if process_file(file, cutoff, dry_run):
-            deleted_count += 1
+    for item in folder_path.iterdir():
+        if item.is_file():
+            if process_file(item, cutoff, dry_run):
+                deleted_files += 1
+        elif item.is_dir():
+            if process_directory(item, cutoff, dry_run):
+                deleted_dirs += 1
 
-    print(f"Cleanup completed. Total files deleted: {deleted_count}"
-          if not dry_run else "Dry run finished")
+    if dry_run:
+        print("Dry run finished")
+    else:
+        print(f"Cleanup completed. Files deleted: {deleted_files} | Directories deleted: {deleted_dirs}")
 
 
 if __name__ == "__main__":
