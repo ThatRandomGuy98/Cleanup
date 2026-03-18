@@ -29,19 +29,25 @@ def validate_folder(folder: str) -> Path:
     return folder_path
 
 
+def ask_dry_run() -> bool:
+    while True:
+        user_input = input("Include dry run? [Y/N]: ").strip().lower()
+
+        if user_input == "y":
+            return True
+        elif user_input == "n":
+            return False
+        else:
+            print("Invalid input. Please type 'Y' or 'N'.")
+
+
 def process_file(file: Path, cutoff: datetime, dry_run: bool = True):
-    """
-    Delete or simulate deleting a file if it hasn't been modified since cutoff date.
-    cutoff : datetime -> Date threshold for deletion.
-    dry_run : bool -> If True, only simulate deletion (default is True).
-    """
     try:
         if file.is_file():
-            last_access = datetime.fromtimestamp(file.stat().st_mtime)
-
-            if last_access < cutoff:
+            created_date = datetime.fromtimestamp(file.stat().st_ctime)
+            if created_date < cutoff:
                 if dry_run:
-                    print(f"[DRY RUN] Would delete file: {file} | last modified: {last_access}")
+                    print(f"[DRY RUN] Would delete file: {file} | created: {created_date}")
                     return False
                 else:
                     send2trash(file)
@@ -56,17 +62,12 @@ def process_file(file: Path, cutoff: datetime, dry_run: bool = True):
 
 
 def process_directory(directory: Path, cutoff: datetime, dry_run: bool = True):
-    """
-    Delete or simulate deleting a directory if it hasn't been modified since cutoff date.
-    WARNING: This will send the ENTIRE directory (and its contents) to trash.
-    """
     try:
         if directory.is_dir():
-            last_access = datetime.fromtimestamp(directory.stat().st_mtime)
-
-            if last_access < cutoff:
+            created_date = datetime.fromtimestamp(directory.stat().st_ctime)
+            if created_date < cutoff:
                 if dry_run:
-                    print(f"[DRY RUN] Would delete directory: {directory} | last modified: {last_access}")
+                    print(f"[DRY RUN] Would delete directory: {directory} | created: {created_date}")
                     return False
                 else:
                     send2trash(directory)
@@ -80,7 +81,7 @@ def process_directory(directory: Path, cutoff: datetime, dry_run: bool = True):
     return False
 
 
-def cleanup_downloaded_files(folder: str, months: int, dry_run: bool = True, log_file: str = None):
+def cleanup_downloaded_files(folder: str, months: int, dry_run: bool = False, log_file: str = None):
     setup_logging(log_file)
 
     try:
@@ -108,4 +109,10 @@ def cleanup_downloaded_files(folder: str, months: int, dry_run: bool = True, log
 
 
 if __name__ == "__main__":
-    cleanup_downloaded_files(folder=PATH_TO_DOWNLOADS, months=3, dry_run=True, log_file="cleanups.log")
+    is_dry_run = ask_dry_run()
+    cleanup_downloaded_files(
+        folder=PATH_TO_DOWNLOADS,
+        months=3,
+        dry_run=is_dry_run,
+        log_file="cleanups.log"
+    )
